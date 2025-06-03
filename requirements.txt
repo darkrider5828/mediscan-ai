@@ -1,0 +1,17 @@
+# requirements.txt
+Flask
+python-dotenv
+google-generativeai
+sentence-transformers
+faiss-cpu # or faiss-gpu if you have CUDA configured
+numpy
+pandas
+pymupdf # PyMuPDF (fitz)
+pdfplumber
+pytesseract
+reportlab
+werkzeug
+matplotlib
+seaborn
+Markdown # For rendering analysis in HTML
+markupsafe # <--- ADD THIS LINE

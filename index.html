@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediScan AI Analyzer</title> <!-- Removed [Dark] -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/medical_logo.png') }}" type="image/png">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <!-- Logo and Title -->
+            {% if config.get('SHOW_LOGO', True) %}
+             <img src="{{ url_for('static', filename='images/medical_logo.png') }}" alt="MediScan Logo" class="logo"
+                  onerror="this.style.display='none'; console.warn('Logo image not found.')">
+            {% endif %}
+            <h1>MediScan AI</h1>
+            <p>Intelligent analysis for medical reports.</p>
+            <hr>
+
+            <!-- Quick Guide -->
+            <h2><span class="icon">🚀</span> Quick Guide</h2>
+            <ol>
+                <li><strong>Upload:</strong> Select your PDF report.</li>
+                <li><strong>Process:</strong> Wait for extraction & indexing.</li>
+                <li><strong>Analyze:</strong> Get summary & table data.</li>
+                <li><strong>Visualize:</strong> View generated charts (if table exists).</li>
+                <li><strong>Chat:</strong> Ask specific questions.</li>
+            </ol>
+            <hr>
+
+            <!-- Reset Button -->
+            <form action="{{ url_for('reset') }}" method="post" id="reset-form">
+                 <button type="submit" class="btn btn-reset"><span class="icon">🔄</span> Clear All & Reset</button>
+            </form>
+            <hr>
+
+             <!-- Footer -->
+             <footer>© 2024 MediScan AI</footer>
+        </aside>
+
+        <main class="main-content">
+            <h1>MediScan - Medical Report Analysis</h1>
+
+             {# --- Status Messages --- #}
+             <div id="status-messages">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% if not models_ready %}
+                    <div class="alert alert-danger" role="alert">
+                       <span class="icon">⚠️</span> <strong>Service Alert:</strong> Core AI models failed. Features unavailable.
+                    </div>
+                {% endif %}
+             </div>
+
+
+            {# --- Upload Section --- #}
+            <section id="upload-section" class="card">
+                 {# Header removed, using padding on card-content instead #}
+                 <div class="card-content">
+                    <h3>1. Upload Report</h3> {# Changed to h3 for better hierarchy #}
+                    <form id="upload-form" action="{{ url_for('upload_process') }}" method="post" enctype="multipart/form-data">
+                        <label for="pdf-file" class="sr-only">Upload Medical Report PDF:</label>
+                        <div class="upload-area">
+                            <input type="file" id="pdf-file" name="pdf_file" accept=".pdf" required>
+                            <button type="submit" class="btn btn-primary" {{ 'disabled' if not models_ready else '' }}>
+                               <span class="icon">📄</span> Upload & Process
+                            </button>
+                        </div>
+                        {% if not models_ready %} <small class="danger-text">Upload disabled.</small> {% endif %}
+                    </form>
+                    <div id="loading-spinner" class="spinner-container" style="display: none;">
+                        <div class="spinner"></div> Processing Upload...
+                     </div>
+                 </div>
+            </section>
+
+            {# --- Post-Processing Actions Section --- #}
+            {% if processing_done %}
+            <section id="post-processing-section" class="card">
+                 {# Header removed #}
+                 <div class="card-content">
+                    <h3>2. Actions</h3> {# Changed to h3 #}
+                     {# File Info Card #}
+                     <div id="file-info">
+                         {% if session.get('current_file_name') %}
+                         <div class="custom-card">
+                             <h4><span class="icon">📄</span> {{ session.get('current_file_name') }}</h4>
+                             <p><small>Status:
+                                    {% if session.get('anonymized_file_path') %} Anonymized. {% endif %}
+                                    {% if session.get('chat_enabled_flag') %} Indexed. {% elif session.get('chunks_filepath') %} Chunks Saved. {% else %} Not Indexed. {% endif %}
+                                    {% if csv_available %} Table Extracted. {% elif session.get('analysis') %} Analyzed (No Table). {% endif %}
+                             </small></p>
+                         </div>
+                         {% endif %}
+                     </div>
+                     {# Action Buttons #}
+                     <div class="action-buttons">
+                        <form action="{{ url_for('analyze') }}" method="post" style="display: inline-block;" id="analyze-form">
+                            <button type="submit" class="btn btn-secondary" {{ 'disabled' if not models_ready or not processing_done else '' }}>
+                                <span class="icon">🔍</span> Generate Analysis
+                            </button>
+                        </form>
+                        <button id="visualize-btn" class="btn btn-info" {{ 'disabled' if not csv_available else '' }}> {# Changed color #}
+                            <span class="icon">📈</span> Show Visuals
+                        </button>
+                         {% if analysis_available %}
+                             <a href="{{ url_for('download_report') }}" class="btn btn-outline-primary" download> {# Changed style #}
+                               <span class="icon">⬇️</span> PDF Report
+                             </a>
+                         {% else %}
+                             <button class="btn btn-outline-primary" disabled><span class="icon">⬇️</span> PDF Report</button>
+                         {% endif %}
+                         {% if csv_available %}
+                             <a href="{{ url_for('download_csv') }}" class="btn btn-outline-secondary" download> {# Changed style #}
+                               <span class="icon">📊</span> CSV Table
+                             </a>
+                         {% else %}
+                             <button class="btn btn-outline-secondary" disabled><span class="icon">📊</span> CSV Table</button>
+                         {% endif %}
+                    </div>
+                    <div id="action-spinner" class="spinner-container" style="display: none;">
+                         <div class="spinner"></div> Working...
+                     </div>
+                 </div>
+            </section>
+            {% endif %} {# End of post-processing section #}
+
+            {# --- Analysis Results --- #}
+            {% if analysis_available %}
+            <section id="analysis-results" class="card results-section">
+                 <details open>
+                    <summary><h3><span class="icon">💡</span> 3. Analysis Details</h3></summary> {# Changed to h3 #}
+                    <div class="analysis-content">
+                        {{ session.get('analysis') | markdown | safe }}
+                    </div>
+                 </details>
+            </section>
+            {% elif processing_done %}
+             <section id="analysis-placeholder" class="card">
+                 <div class="card-content">
+                    <h3>3. Analysis Details</h3>
+                    <p class="info-text">Click 'Generate Analysis' above to view results here.</p>
+                 </div>
+            </section>
+            {% endif %} {# End of analysis results #}
+
+             {# --- Visualizations --- #}
+             <section id="visualizations" class="card results-section" style="display: none;">
+                 <details open>
+                     <summary><h3><span class="icon">📊</span> 4. Data Visualizations</h3></summary> {# Changed to h3 #}
+                     <div id="visualization-spinner" class="spinner-container" style="display: none;">
+                         <div class="spinner"></div> Generating Visualizations...
+                     </div>
+                     <div id="visualization-content" class="card-content"> {# Added card-content for padding #}
+                         <p class="info-text">Click 'Show Visuals' to load charts (if available).</p>
+                     </div>
+                 </details>
+             </section>
+
+            {# --- Chat Section --- #}
+             <section id="chat-section" class="card chat-container">
+                 <h3><span class="icon">💬</span> 5. Chat with Your Report</h3> {# Changed to h3 #}
+                 <div class="chat-content"> {# Added wrapper div for padding #}
+                     {% if chat_enabled %}
+                         <div id="chat-history" class="chat-history" aria-live="polite">
+                             {% for msg in session.get('chat_history', []) %}
+                                <div class="chat-message {{ msg.role }}">
+                                    <span class="role-label">{{ msg.role.capitalize() }}:</span>
+                                    <span class="message-content">{{ msg.content | safe }}</span>
+                                </div>
+                             {% else %}
+                                 <div class="chat-message assistant">
+                                     <span class="role-label">Assistant:</span>
+                                     <span class="message-content">Hello! How may I help you with the report?</span>
+                                 </div>
+                             {% endfor %}
+                         </div>
+                         <form id="chat-form" class="chat-input-form">
+                             <label for="chat-input" class="sr-only">Ask a question</label>
+                             <input type="text" id="chat-input" placeholder="Ask a question..." required autocomplete="off">
+                             <button type="submit" class="btn btn-chat" aria-label="Send">Send</button> {# Changed text #}
+                         </form>
+                         <div id="chat-spinner" class="spinner-container" style="display: none;">
+                              <div class="spinner"></div> Thinking...
+                          </div>
+                     {% elif processing_done %}
+                         <p class="info-text">Chat requires the report to be indexed successfully. Indexing might have been skipped or failed during processing. Please check server logs or re-upload.</p>
+                     {% else %}
+                         <p class="info-text">Upload and process a report to enable the chat feature.</p>
+                     {% endif %}
+                 </div> {# End chat-content #}
+            </section>
+        </main>
+    </div>
+
+    <!-- ADDED: Include marked.js library (CDN link) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    {# Link your existing JavaScript at the end #}
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
